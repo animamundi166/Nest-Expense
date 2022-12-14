@@ -1,4 +1,9 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
@@ -9,6 +14,11 @@ interface SignupParams {
   email: string;
   password: string;
   phone: string;
+}
+
+interface SigninParams {
+  email: string;
+  password: string;
 }
 
 @Injectable()
@@ -37,17 +47,42 @@ export class AuthService {
       },
     });
 
-    const token = await jwt.sign(
+    const token = await this.generateJWT(name, user.id);
+
+    return token;
+  }
+
+  async signin({ email, password }: SigninParams) {
+    const user = await this.prismaService.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!user) {
+      throw new HttpException('Invalid Credentials', HttpStatus.BAD_REQUEST);
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+
+    if (!isValidPassword) {
+      throw new HttpException('Invalid Credentials', HttpStatus.BAD_REQUEST);
+    }
+
+    const token = await this.generateJWT(user.name, user.id);
+    return token;
+  }
+
+  private generateJWT(name: string, id: number) {
+    return jwt.sign(
       {
         name,
-        id: user.id,
+        id,
       },
       process.env.JSON_SECRET_KEY,
       {
         expiresIn: '15d',
       },
     );
-
-    return token;
   }
 }
